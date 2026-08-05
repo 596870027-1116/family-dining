@@ -195,6 +195,12 @@ body {
     <button class="btn btn-ghost" style="flex:1" onclick="resetAll()">🔄 清空重来</button>
   </div>
 
+  <div class="section-title"><span class="bar"></span>🔔 推送通知</div>
+  <div style="display:flex; gap:10px">
+    <button class="btn btn-ghost" style="flex:1" onclick="openPushSettings()">⚙️ 设置推送</button>
+    <button class="btn btn-ghost" style="flex:1" onclick="testBark()">📲 测试推送</button>
+  </div>
+
   <div style="height:24px"></div>
   <div class="bottom-bar">
     <div class="bar-info">选好人数和谁点菜<br>开始愉快的点菜吧</div>
@@ -278,6 +284,25 @@ body {
 
 <div class="toast" id="toast"></div>
 
+<!-- ═══════════ 推送设置弹窗 ═══════════ -->
+<div class="modal-mask" id="pushModal" style="display:none" onclick="if(event.target===this)closePushSettings()">
+  <div class="modal">
+    <h3 style="margin-bottom:10px">🔔 推送设置</h3>
+    <label style="font-size:13px;color:#9a7b5f;display:block;margin-bottom:6px">Bark 设备 Key</label>
+    <input id="inpBarkKey" placeholder="粘贴 Bark 的 Key" style="width:100%;padding:12px;border:1.5px solid #f0dcc8;border-radius:12px;font-size:14px;background:#fdf9f4;color:#5a4632;outline:none;box-sizing:border-box">
+    <p style="font-size:11px;color:#c4a98e;margin:8px 0 14px">在 iPhone 的 Bark App 里查看设备 Key，形如 xxxxxxxx-xxxx</p>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closePushSettings()">取消</button>
+      <button class="btn btn-primary" style="flex:1" onclick="savePushKey()">保存 💾</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.modal-mask { position:fixed; inset:0; background:rgba(40,30,20,.45); z-index:80; display:flex; align-items:center; justify-content:center; padding:20px; }
+.modal { background:#fff; border-radius:20px; padding:22px; width:100%; max-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.2); }
+</style>
+
 <script>
 // ═════════════ 数据 ═════════════
 const CATS = {
@@ -314,6 +339,28 @@ let state = {
   activeCat: 'meat',
   customMenu: [],
 };
+
+// ═════════════ Bark 推送配置 ═════════════
+const BARK_DEFAULT_KEY = 'WdULJpKDLtGsxWM3uMe9pR';
+const BARK_API = 'https://api.day.app';
+
+function getBarkKey() {
+  return localStorage.getItem('barkKey') || BARK_DEFAULT_KEY;
+}
+
+function sendBark(title, body) {
+  const key = getBarkKey();
+  if (!key) return;
+  const url = `${BARK_API}/${key}/${encodeURIComponent(title)}/${encodeURIComponent(body)}`;
+  fetch(url, { mode: 'no-cors' }).catch(() => {});
+}
+
+function testBark() {
+  const key = getBarkKey();
+  if (!key) { toast('先设置推送 Key 哦'); return; }
+  sendBark('✅ 推送测试成功', '家庭点菜系统已连接，点菜完成会通知你！');
+  toast('📲 已发送测试，看看手机！');
+}
 
 // ═════════════ 工具 ═════════════
 function $(id) { return document.getElementById(id); }
@@ -507,6 +554,36 @@ function finishOrder() {
   }
   $('resultMeta').innerHTML = `${state.who}点的 · ${state.people}人用餐 · 共 ${entries.length} 道 (荤${meat} 素${veg})`;
   goPage('page-result');
+
+  // 🔔 推送通知到 Bark
+  try {
+    const dishList = entries
+      .map(([name, q]) => {
+        const item = menu.find(m => m[0] === name);
+        return `${item ? item[2] : '🍽️'} ${name}${q > 1 ? '×' + q : ''}`;
+      })
+      .join('、');
+    sendBark(
+      `🏠 家庭点菜 · ${state.people}人用餐`,
+      `${state.who}点了 ${entries.length} 道：${dishList}`
+    );
+  } catch (e) { /* 推送失败不影响点菜 */ }
+}
+
+function openPushSettings() {
+  $('inpBarkKey').value = getBarkKey() === BARK_DEFAULT_KEY ? '' : getBarkKey();
+  $('pushModal').style.display = 'flex';
+}
+
+function closePushSettings() {
+  $('pushModal').style.display = 'none';
+}
+
+function savePushKey() {
+  const key = $('inpBarkKey').value.trim();
+  if (!key) { localStorage.removeItem('barkKey'); toast('已恢复默认 Key'); }
+  else { localStorage.setItem('barkKey', key); toast('✅ 推送设置已保存'); }
+  closePushSettings();
 }
 
 function copyResult() {

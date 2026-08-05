@@ -68,6 +68,7 @@ body {
 .dish .dish-photo img { width:100%; height:100%; object-fit:cover; display:block; }
 .dish .name { font-size:13px; font-weight:600; color:#5a4632; line-height:1.3; }
 .dish .tag { font-size:10px; color:#c4a98e; margin-top:3px; display:block; }
+.dish .eaten-tag { position:absolute; bottom:6px; left:6px; font-size:9px; color:#9a7b5f; background:#f5e8d8; padding:1px 5px; border-radius:8px; }
 .dish.selected {
   border-color:#ff6b6b; background:linear-gradient(160deg,#fff,#fff5f0);
   box-shadow:0 4px 14px rgba(255,107,107,.25);
@@ -155,6 +156,11 @@ body {
 .added-item .name { flex:1; font-size:14px; }
 .added-item .cat { font-size:11px; color:#9a7b5f; background:#f5e8d8; padding:2px 8px; border-radius:10px; }
 .added-item .del { color:#e05555; font-size:18px; padding:0 6px; cursor:pointer; }
+.history-card { background:#fff; border-radius:18px; padding:14px; margin-bottom:12px; box-shadow:0 2px 8px rgba(90,70,50,.05); }
+.history-head { display:flex; justify-content:space-between; font-size:13px; color:#9a7b5f; margin-bottom:8px; }
+.history-meta { font-size:11px; background:#f5e8d8; padding:2px 8px; border-radius:10px; }
+.history-dishes { font-size:14px; color:#5a4632; line-height:1.6; margin-bottom:10px; }
+.history-actions { text-align:right; }
 
 /* ── Toast ── */
 .toast {
@@ -190,6 +196,12 @@ body {
     <div class="people-btn" data-who="老婆">
       <span class="emoji" style="font-size:26px">👩</span><span>老婆点</span>
     </div>
+  </div>
+
+  <div class="section-title"><span class="bar"></span>🎲 选择困难？</div>
+  <div style="display:flex; gap:10px">
+    <button class="btn btn-ghost" style="flex:1" onclick="randomMeal()">🎲 今天吃什么</button>
+    <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-history')">🕘 点菜历史</button>
   </div>
 
   <div class="section-title"><span class="bar"></span>📝 自定义菜单</div>
@@ -251,7 +263,10 @@ body {
     <div class="result-list" id="resultList"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="copyResult()">📋 复制</button>
-      <button class="btn btn-primary" onclick="window.print()">🖨️ 截图/打印</button>
+      <button class="btn btn-primary" onclick="copyShopping()">🛒 购物清单</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" style="flex:1" onclick="window.print()">🖨️ 截图/打印</button>
     </div>
     <div class="btn-row">
       <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">🏠 回到首页</button>
@@ -280,6 +295,15 @@ body {
   </div>
   <div class="section-title"><span class="bar"></span>📋 全部菜单（点 📷 可设置照片）</div>
   <div class="form-card" id="customList"></div>
+  <div class="bottom-bar">
+    <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">← 返回</button>
+  </div>
+</div>
+
+<!-- ═══════════ 页面6: 历史记录 ═══════════ -->
+<div class="page" id="page-history">
+  <div class="section-title" style="margin-top:8px"><span class="bar"></span>🕘 最近点过的菜</div>
+  <div id="historyList"></div>
   <div class="bottom-bar">
     <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">← 返回</button>
   </div>
@@ -454,6 +478,109 @@ function pickPhoto(onDone) {
   input.click();
 }
 
+// ═════════════ 点菜历史 ═════════════
+function getHistory() {
+  return JSON.parse(localStorage.getItem('dineHistory') || '[]');
+}
+
+function saveHistory(orders, people, who) {
+  const hist = getHistory();
+  hist.unshift({ time: Date.now(), orders, people, who });
+  if (hist.length > 60) hist.length = 60;
+  localStorage.setItem('dineHistory', JSON.stringify(hist));
+}
+
+// 菜品最近一次被点的时间戳（毫秒）
+function lastEatenAt(name) {
+  const hist = getHistory();
+  for (const h of hist) {
+    if (h.orders && h.orders[name]) return h.time;
+  }
+  return 0;
+}
+
+function timeAgo(ts) {
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days <= 0) return '今天';
+  if (days === 1) return '昨天';
+  if (days < 7) return `${days}天前`;
+  const weeks = Math.floor(days / 7);
+  return weeks === 1 ? '上周' : `${weeks}周前`;
+}
+
+// ═════════════ 食材清单 ═════════════
+const INGREDIENTS = {
+  '红烧排骨': '排骨、冰糖、生抽、姜', '可乐鸡翅': '鸡翅、可乐、生抽、姜',
+  '糖醋里脊': '里脊肉、番茄酱、醋、糖', '宫保鸡丁': '鸡胸肉、花生、黄瓜、干辣椒',
+  '红烧肉': '五花肉、冰糖、生抽、料酒', '清蒸鲈鱼': '鲈鱼、姜、葱、蒸鱼豉油',
+  '回锅肉': '五花肉、蒜苗、豆瓣酱、青椒', '蒜蓉大虾': '虾、蒜、粉丝、生抽',
+  '清炒时蔬': '时令蔬菜、蒜、盐', '西红柿炒蛋': '西红柿、鸡蛋、葱',
+  '地三鲜': '茄子、土豆、青椒、蒜', '蒜蓉西兰花': '西兰花、蒜、蚝油',
+  '酸辣土豆丝': '土豆、干辣椒、醋、蒜', '麻婆豆腐': '豆腐、肉末、豆瓣酱、花椒',
+  '紫菜蛋花汤': '紫菜、鸡蛋、葱', '玉米排骨汤': '玉米、排骨、姜',
+  '番茄牛腩汤': '番茄、牛腩、洋葱', '拍黄瓜': '黄瓜、蒜、醋、香油',
+  '凉拌木耳': '木耳、蒜、醋、辣椒油', '皮蛋豆腐': '皮蛋、内酯豆腐、葱花',
+  '白米饭': '大米', '蛋炒饭': '米饭、鸡蛋、火腿、葱',
+  '馒头': '面粉、酵母', '可乐': '可乐', '橙汁': '橙子', '酸奶': '酸奶',
+};
+
+function genShoppingList() {
+  const menu = getMenu();
+  const items = new Map(); // 食材 → 计数
+  for (const [name, q] of Object.entries(state.orders)) {
+    const recipe = INGREDIENTS[name];
+    if (recipe) {
+      recipe.split('、').forEach(ing => {
+        const key = ing.trim();
+        if (!key) return;
+        items.set(key, (items.get(key) || 0) + q);
+      });
+    } else {
+      const item = menu.find(m => m[0] === name);
+      items.set(`${item ? item[2] + ' ' : ''}${name}`, (items.get(`${item ? item[2] + ' ' : ''}${name}`) || 0) + q);
+    }
+  }
+  const lines = Array.from(items.entries())
+    .map(([ing, q]) => `🛒 ${ing} ×${q}`)
+    .join('\n');
+  return `🧺 今日购物清单\n\n${lines}\n\n共 ${items.size} 种食材`;
+}
+
+// ═════════════ 随机搭配 ═════════════
+function randomMeal() {
+  const menu = getMenu();
+  const byCat = {};
+  menu.forEach(([name, cat]) => {
+    (byCat[cat] = byCat[cat] || []).push(name);
+  });
+  const pick = (arr, n) => {
+    const copy = [...arr];
+    const out = [];
+    while (out.length < n && copy.length) {
+      out.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
+    }
+    return out;
+  };
+  // 按人数定搭配：荤≈ceil(n/2)，素≈n，汤1，其他随机1-2
+  const n = state.people || 2;
+  const meatN = Math.max(1, Math.ceil(n / 2));
+  const vegN = Math.max(1, n);
+  const meal = [
+    ...pick(byCat.meat || [], meatN),
+    ...pick(byCat.veg || [], vegN),
+    ...pick(byCat.soup || [], 1),
+  ];
+  // 主食 + 饮品随机
+  const extra = pick([...(byCat.staple || []), ...(byCat.cold || []), ...(byCat.drink || [])], 2);
+  meal.push(...extra);
+
+  state.orders = {};
+  meal.forEach(name => { state.orders[name] = 1; });
+  toast('🎲 今天吃这些！', 1500);
+  renderTabs();
+  goPage('page-order');
+}
+
 // ═════════════ 工具 ═════════════
 function $(id) { return document.getElementById(id); }
 function toast(msg) {
@@ -481,6 +608,7 @@ function goPage(id) {
   if (id === 'page-list') renderList();
   if (id === 'page-manage') renderManage();
   if (id === 'page-order') renderTabs();
+  if (id === 'page-history') renderHistory();
 }
 
 // ═════════════ 人数选择 ═════════════
@@ -533,17 +661,21 @@ async function renderDishes() {
     const d = document.createElement('div');
     d.className = 'dish' + (qty > 0 ? ' selected' : '');
     const photo = await getDishPhoto(name);
+    const lastTs = lastEatenAt(name);
+    const eatenTag = lastTs ? `<span class="eaten-tag">🕘${timeAgo(lastTs)}</span>` : '';
     if (photo) {
       d.innerHTML = `
         <span class="dish-photo"><img src="${photo}" alt="${name}"></span>
         <span class="name">${name}</span>
         <span class="tag">${CATS[cat].name}</span>
+        ${eatenTag}
         ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
     } else {
       d.innerHTML = `
         <span class="emoji">${emoji}</span>
         <span class="name">${name}</span>
         <span class="tag">${CATS[cat].name}</span>
+        ${eatenTag}
         ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
     }
     d.onclick = () => toggleDish(name);
@@ -657,6 +789,11 @@ function finishOrder() {
   $('resultMeta').innerHTML = `${state.who}点的 · ${state.people}人用餐 · 共 ${entries.length} 道 (荤${meat} 素${veg})`;
   goPage('page-result');
 
+  // 🕘 保存点菜历史
+  try {
+    saveHistory({ ...state.orders }, state.people, state.who);
+  } catch (e) { /* 历史保存失败不影响 */ }
+
   // 🔔 推送通知到 Bark
   try {
     const dishList = entries
@@ -688,6 +825,25 @@ function savePushKey() {
   closePushSettings();
 }
 
+function copyShopping() {
+  const list = genShoppingList();
+  _copyText(list, '🛒 购物清单已复制！');
+}
+
+function _copyText(text, okMsg) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast(okMsg));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    toast(okMsg);
+  }
+}
+
 function copyResult() {
   const menu = getMenu();
   let text = `🍽️ 今日点菜单\n👥 ${state.people}人用餐 · ${state.who}点的\n\n`;
@@ -696,17 +852,50 @@ function copyResult() {
     text += `${item ? item[2] : '🍽️'} ${name}${q > 1 ? ' ×' + q : ''}\n`;
   }
   text += `\n共 ${Object.keys(state.orders).length} 道，开饭啦！🥢`;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(() => toast('📋 已复制，去粘贴吧！'));
-  } else {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    ta.remove();
-    toast('📋 已复制，去粘贴吧！');
-  }
+  _copyText(text, '📋 已复制，去粘贴吧！');
+}
+
+// ═════════════ 历史记录页 ═════════════
+function renderHistory() {
+  const list = $('historyList');
+  const menu = getMenu();
+  const hist = getHistory();
+  list.innerHTML = hist.length ? '' : '<div class="form-card" style="text-align:center;color:#c4a98e;padding:24px">还没有点菜记录<br>点一次菜就有了～</div>';
+  hist.forEach((h, idx) => {
+    const d = document.createElement('div');
+    d.className = 'history-card';
+    const date = new Date(h.time);
+    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    const entries = Object.entries(h.orders || {});
+    const dishStr = entries
+      .map(([name, q]) => {
+        const item = menu.find(m => m[0] === name);
+        return `${item ? item[2] : '🍽️'}${name}${q > 1 ? '×' + q : ''}`;
+      })
+      .join('、');
+    d.innerHTML = `
+      <div class="history-head">
+        <span>${dateStr}</span>
+        <span class="history-meta">${h.people}人 · ${h.who}点 · ${entries.length}道</span>
+      </div>
+      <div class="history-dishes">${dishStr}</div>
+      <div class="history-actions">
+        <button class="btn btn-ghost" style="padding:6px 14px;font-size:12px" onclick="reuseHistory(${idx})">↩️ 再来一桌</button>
+      </div>`;
+    list.appendChild(d);
+  });
+}
+
+function reuseHistory(idx) {
+  const hist = getHistory();
+  const h = hist[idx];
+  if (!h) return;
+  state.orders = { ...(h.orders || {}) };
+  state.people = h.people || 0;
+  state.who = h.who || '我';
+  renderPeople();
+  toast('↩️ 已恢复上次的菜，可以加减调整', 1800);
+  goPage('page-order');
 }
 
 // ═════════════ 菜单管理 ═════════════

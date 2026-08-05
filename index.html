@@ -64,6 +64,8 @@ body {
 }
 .dish:active { transform:scale(.96); }
 .dish .emoji { font-size:32px; display:block; margin-bottom:6px; }
+.dish .dish-photo { display:block; width:52px; height:52px; margin:0 auto 6px; border-radius:12px; overflow:hidden; background:#f5e8d8; }
+.dish .dish-photo img { width:100%; height:100%; object-fit:cover; display:block; }
 .dish .name { font-size:13px; font-weight:600; color:#5a4632; line-height:1.3; }
 .dish .tag { font-size:10px; color:#c4a98e; margin-top:3px; display:block; }
 .dish.selected {
@@ -148,7 +150,8 @@ body {
 .form-card input:focus { border-color:#ff8c42; }
 .added-item { display:flex; align-items:center; padding:10px 0; border-bottom:1px dashed #f0e4d4; }
 .added-item:last-child { border:none; }
-.added-item .emoji { font-size:20px; margin-right:10px; }
+.added-item .mgr-photo { width:38px; height:38px; border-radius:10px; overflow:hidden; background:#f5e8d8; display:flex; align-items:center; justify-content:center; font-size:20px; margin-right:10px; flex-shrink:0; }
+.added-item .mgr-photo img { width:100%; height:100%; object-fit:cover; display:block; }
 .added-item .name { flex:1; font-size:14px; }
 .added-item .cat { font-size:11px; color:#9a7b5f; background:#f5e8d8; padding:2px 8px; border-radius:10px; }
 .added-item .del { color:#e05555; font-size:18px; padding:0 6px; cursor:pointer; }
@@ -275,7 +278,7 @@ body {
     <input id="inpEmoji" placeholder="🍖" maxlength="4">
     <div style="margin-top:12px"><button class="btn btn-primary" style="width:100%" onclick="addDish()">添加 ➕</button></div>
   </div>
-  <div class="section-title"><span class="bar"></span>📋 已添加的菜</div>
+  <div class="section-title"><span class="bar"></span>📋 全部菜单（点 📷 可设置照片）</div>
   <div class="form-card" id="customList"></div>
   <div class="bottom-bar">
     <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">← 返回</button>
@@ -362,6 +365,93 @@ function testBark() {
   toast('📲 已发送测试，看看手机！');
 }
 
+// ═════════════ 菜品照片 (IndexedDB) ═════════════
+function openPhotoDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('familyMenuDB', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('dishPhotos')) {
+        db.createObjectStore('dishPhotos');
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e);
+  });
+}
+
+async function saveDishPhoto(name, dataUrl) {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('dishPhotos', 'readwrite');
+      tx.objectStore('dishPhotos').put(dataUrl, name);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { return false; }
+}
+
+async function getDishPhoto(name) {
+  try {
+    const db = await openPhotoDB();
+    return new Promise(resolve => {
+      const tx = db.transaction('dishPhotos', 'readonly');
+      const req = tx.objectStore('dishPhotos').get(name);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) { return null; }
+}
+
+async function removeDishPhoto(name) {
+  try {
+    const db = await openPhotoDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('dishPhotos', 'readwrite');
+      tx.objectStore('dishPhotos').delete(name);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { return false; }
+}
+
+function compressImage(file, maxSize = 160) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+function pickPhoto(onDone) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file);
+      onDone(dataUrl);
+    } catch (e) {
+      toast('❌ 图片处理失败', 2000);
+    }
+  };
+  input.click();
+}
+
 // ═════════════ 工具 ═════════════
 function $(id) { return document.getElementById(id); }
 function toast(msg) {
@@ -431,22 +521,32 @@ function renderTabs() {
   renderDishes();
 }
 
-function renderDishes() {
+async function renderDishes() {
   const grid = $('dishGrid');
   grid.innerHTML = '';
   const menu = getMenu();
-  menu.filter(m => m[1] === state.activeCat).forEach(([name, cat, emoji]) => {
-    const d = document.createElement('div');
+  const catDishes = menu.filter(m => m[1] === state.activeCat);
+  for (const [name, cat, emoji] of catDishes) {
     const qty = state.orders[name] || 0;
+    const d = document.createElement('div');
     d.className = 'dish' + (qty > 0 ? ' selected' : '');
-    d.innerHTML = `
-      <span class="emoji">${emoji}</span>
-      <span class="name">${name}</span>
-      <span class="tag">${CATS[cat].name}</span>
-      ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
+    const photo = await getDishPhoto(name);
+    if (photo) {
+      d.innerHTML = `
+        <span class="dish-photo"><img src="${photo}" alt="${name}"></span>
+        <span class="name">${name}</span>
+        <span class="tag">${CATS[cat].name}</span>
+        ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
+    } else {
+      d.innerHTML = `
+        <span class="emoji">${emoji}</span>
+        <span class="name">${name}</span>
+        <span class="tag">${CATS[cat].name}</span>
+        ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
+    }
     d.onclick = () => toggleDish(name);
     grid.appendChild(d);
-  });
+  }
   updateBar();
 }
 
@@ -628,25 +728,53 @@ function addDish() {
 
 function renderManage() {
   const list = $('customList');
+  const menu = getMenu();
   const custom = getCustom();
-  list.innerHTML = custom.length ? '' : '<div style="color:#c4a98e;text-align:center;padding:14px">还没有自定义菜，添加一道吧～</div>';
-  custom.forEach(([name, cat, emoji], i) => {
+  list.innerHTML = menu.length ? '' : '<div style="color:#c4a98e;text-align:center;padding:14px">还没有菜，先添加一道吧～</div>';
+  menu.forEach(([name, cat, emoji]) => {
+    const isCustom = custom.some(c => c[0] === name);
     const d = document.createElement('div');
     d.className = 'added-item';
+    d.id = 'mgr-' + name;
     d.innerHTML = `
-      <span class="emoji">${emoji}</span>
+      <span class="mgr-photo" data-name="${name}">${emoji}</span>
       <span class="name">${name}</span>
-      <span class="cat">${CATS[cat].name}</span>
-      <span class="del" onclick="delDish(${i})">✕</span>`;
+      <span class="cat">${CATS[cat].name}${isCustom ? ' · 自' : ''}</span>
+      <span class="del" onclick="pickPhotoFor('${name.replace(/'/g, "\\'")}')">📷</span>
+      ${isCustom ? `<span class="del" onclick="delDish('${name.replace(/'/g, "\\'")}')">✕</span>` : ''}`;
     list.appendChild(d);
+    // 加载照片预览
+    getDishPhoto(name).then(photo => {
+      const el = d.querySelector('.mgr-photo');
+      if (el && photo) el.innerHTML = `<img src="${photo}">`;
+    });
   });
 }
 
-function delDish(i) {
+function pickPhotoFor(name) {
+  pickPhoto(async dataUrl => {
+    const ok = await saveDishPhoto(name, dataUrl);
+    if (ok) {
+      toast(`📷 ${name} 照片已设置`, 1500);
+      renderManage();
+      renderDishes();
+    } else {
+      toast('❌ 保存失败', 2000);
+    }
+  });
+}
+
+function delDish(name) {
   const custom = getCustom();
-  custom.splice(i, 1);
-  saveCustom(custom);
-  renderManage();
+  const idx = custom.findIndex(c => c[0] === name);
+  if (idx >= 0) {
+    custom.splice(idx, 1);
+    saveCustom(custom);
+    removeDishPhoto(name);
+    renderManage();
+    renderDishes();
+    toast('🗑️ 已删除 ' + name, 1200);
+  }
 }
 
 function resetAll() {

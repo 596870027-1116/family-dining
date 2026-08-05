@@ -287,6 +287,9 @@ body {
 
 <div class="toast" id="toast"></div>
 
+<!-- 隐藏的照片选择 input（移动端兼容） -->
+<input type="file" id="photoInput" accept="image/*" style="display:none">
+
 <!-- ═══════════ 推送设置弹窗 ═══════════ -->
 <div class="modal-mask" id="pushModal" style="display:none" onclick="if(event.target===this)closePushSettings()">
   <div class="modal">
@@ -436,9 +439,8 @@ function compressImage(file, maxSize = 160) {
 }
 
 function pickPhoto(onDone) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
+  const input = $('photoInput');
+  input.value = '';
   input.onchange = async () => {
     const file = input.files && input.files[0];
     if (!file) return;

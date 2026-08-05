@@ -1,0 +1,15 @@
+{
+  "name": "家庭点菜",
+  "short_name": "家庭点菜",
+  "description": "全家人的点菜小助手",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff8f0",
+  "theme_color": "#ff8c42",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

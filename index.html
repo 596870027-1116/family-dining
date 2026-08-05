@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🏠 家庭点菜</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#ff8c42">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="家庭点菜">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 body {
@@ -69,6 +76,8 @@ body {
 .dish .name { font-size:13px; font-weight:600; color:#5a4632; line-height:1.3; }
 .dish .tag { font-size:10px; color:#c4a98e; margin-top:3px; display:block; }
 .dish .eaten-tag { position:absolute; bottom:6px; left:6px; font-size:9px; color:#9a7b5f; background:#f5e8d8; padding:1px 5px; border-radius:8px; }
+.dish .dish-spicy { display:block; font-size:10px; color:#e05555; margin-top:2px; }
+.dish .dish-kcal { display:block; font-size:10px; color:#9a7b5f; margin-top:1px; }
 .dish.selected {
   border-color:#ff6b6b; background:linear-gradient(160deg,#fff,#fff5f0);
   box-shadow:0 4px 14px rgba(255,107,107,.25);
@@ -161,6 +170,12 @@ body {
 .history-meta { font-size:11px; background:#f5e8d8; padding:2px 8px; border-radius:10px; }
 .history-dishes { font-size:14px; color:#5a4632; line-height:1.6; margin-bottom:10px; }
 .history-actions { text-align:right; }
+.rec-row { display:flex; align-items:flex-start; margin-bottom:8px; }
+.rec-row:last-child { margin-bottom:0; }
+.rec-label { font-size:12px; color:#9a7b5f; font-weight:600; flex-shrink:0; margin-right:8px; padding-top:3px; }
+.rec-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.rec-chip { background:#fff5f0; color:#e07b39; font-size:12px; padding:3px 10px; border-radius:14px; border:1px solid #ffe0cc; cursor:pointer; }
+.rec-chip:active { background:#ffe0cc; }
 
 /* ── Toast ── */
 .toast {
@@ -197,6 +212,9 @@ body {
       <span class="emoji" style="font-size:26px">👩</span><span>老婆点</span>
     </div>
   </div>
+
+  <div class="section-title"><span class="bar"></span>💡 为你推荐</div>
+  <div id="recArea" style="background:#fff;border-radius:18px;padding:12px;box-shadow:0 2px 8px rgba(90,70,50,.05);margin-bottom:6px"></div>
 
   <div class="section-title"><span class="bar"></span>🎲 选择困难？</div>
   <div style="display:flex; gap:10px">
@@ -245,6 +263,7 @@ body {
     <div class="row"><span>🥬 素菜</span><b id="sumVeg">0 道</b></div>
     <div class="row"><span>🍲 其他</span><b id="sumOther">0 道</b></div>
     <div class="row"><span>📦 合计</span><b id="sumTotal">0 道</b></div>
+    <div class="row"><span>🔥 总热量</span><b id="sumKcal">0 kcal</b></div>
   </div>
   <div id="listGroups"></div>
   <div class="bottom-bar">
@@ -291,6 +310,15 @@ body {
     </select>
     <label>图标 (emoji)</label>
     <input id="inpEmoji" placeholder="🍖" maxlength="4">
+    <label>辣度</label>
+    <select id="inpSpicy">
+      <option value="0">不辣</option>
+      <option value="1">微辣 🌶️</option>
+      <option value="2">中辣 🌶️🌶️</option>
+      <option value="3">重辣 🌶️🌶️🌶️</option>
+    </select>
+    <label>热量 (kcal/份，可不填)</label>
+    <input id="inpKcal" type="number" placeholder="如 350" min="0">
     <div style="margin-top:12px"><button class="btn btn-primary" style="width:100%" onclick="addDish()">添加 ➕</button></div>
   </div>
   <div class="section-title"><span class="bar"></span>📋 全部菜单（点 📷 可设置照片）</div>
@@ -344,23 +372,27 @@ const CATS = {
   drink:  { name: '🥤 饮品', tag: '饮', tagClass: 'tag-other' },
 };
 
+// 菜单结构: [菜名, 分类, emoji, 辣度(0-3), 热量(kcal/份)]
 const DEFAULT_MENU = [
   // 荤菜
-  ['红烧排骨', 'meat', '🍖'], ['可乐鸡翅', 'meat', '🍗'], ['糖醋里脊', 'meat', '🥩'],
-  ['宫保鸡丁', 'meat', '🍛'], ['红烧肉', 'meat', '🍖'], ['清蒸鲈鱼', 'meat', '🐟'],
-  ['回锅肉', 'meat', '🥘'], ['蒜蓉大虾', 'meat', '🦐'],
+  ['红烧排骨', 'meat', '🍖', 0, 450], ['可乐鸡翅', 'meat', '🍗', 0, 380], ['糖醋里脊', 'meat', '🥩', 0, 420],
+  ['宫保鸡丁', 'meat', '🍛', 2, 350], ['红烧肉', 'meat', '🍖', 0, 520], ['清蒸鲈鱼', 'meat', '🐟', 1, 280],
+  ['回锅肉', 'meat', '🥘', 2, 480], ['蒜蓉大虾', 'meat', '🦐', 1, 300],
   // 素菜
-  ['清炒时蔬', 'veg', '🥬'], ['西红柿炒蛋', 'veg', '🍅'], ['地三鲜', 'veg', '🍆'],
-  ['蒜蓉西兰花', 'veg', '🥦'], ['酸辣土豆丝', 'veg', '🥔'], ['麻婆豆腐', 'veg', '🌶️'],
+  ['清炒时蔬', 'veg', '🥬', 0, 120], ['西红柿炒蛋', 'veg', '🍅', 0, 180], ['地三鲜', 'veg', '🍆', 0, 260],
+  ['蒜蓉西兰花', 'veg', '🥦', 0, 140], ['酸辣土豆丝', 'veg', '🥔', 2, 190], ['麻婆豆腐', 'veg', '🌶️', 3, 240],
   // 汤
-  ['紫菜蛋花汤', 'soup', '🍲'], ['玉米排骨汤', 'soup', '🌽'], ['番茄牛腩汤', 'soup', '🍅'],
+  ['紫菜蛋花汤', 'soup', '🍲', 0, 80], ['玉米排骨汤', 'soup', '🌽', 0, 220], ['番茄牛腩汤', 'soup', '🍅', 1, 260],
   // 凉菜
-  ['拍黄瓜', 'cold', '🥒'], ['凉拌木耳', 'cold', '🍄'], ['皮蛋豆腐', 'cold', '🥚'],
+  ['拍黄瓜', 'cold', '🥒', 1, 90], ['凉拌木耳', 'cold', '🍄', 1, 100], ['皮蛋豆腐', 'cold', '🥚', 1, 150],
   // 主食
-  ['白米饭', 'staple', '🍚'], ['蛋炒饭', 'staple', '🍳'], ['馒头', 'staple', '🥟'],
+  ['白米饭', 'staple', '🍚', 0, 230], ['蛋炒饭', 'staple', '🍳', 0, 350], ['馒头', 'staple', '🥟', 0, 220],
   // 饮品
-  ['可乐', 'drink', '🥤'], ['橙汁', 'drink', '🧃'], ['酸奶', 'drink', '🥛'],
+  ['可乐', 'drink', '🥤', 0, 140], ['橙汁', 'drink', '🧃', 0, 120], ['酸奶', 'drink', '🥛', 0, 130],
 ];
+
+// 辣度文案
+const SPICY_TEXT = ['不辣', '微辣', '中辣', '重辣'];
 
 let state = {
   people: 0,
@@ -522,6 +554,33 @@ const INGREDIENTS = {
   '凉拌木耳': '木耳、蒜、醋、辣椒油', '皮蛋豆腐': '皮蛋、内酯豆腐、葱花',
   '白米饭': '大米', '蛋炒饭': '米饭、鸡蛋、火腿、葱',
   '馒头': '面粉、酵母', '可乐': '可乐', '橙汁': '橙子', '酸奶': '酸奶',
+  // ── 扩展家常菜食材库 ──
+  '鱼香肉丝': '里脊肉、木耳、胡萝卜、豆瓣酱', '水煮鱼': '草鱼、豆芽、干辣椒、花椒',
+  '剁椒鱼头': '鱼头、剁椒、姜、蒸鱼豉油', '辣子鸡': '鸡腿、干辣椒、花椒、花生',
+  '白切鸡': '三黄鸡、姜、葱、生抽', '啤酒鸭': '鸭肉、啤酒、姜、八角',
+  '梅菜扣肉': '五花肉、梅菜、生抽、糖', '粉蒸肉': '五花肉、蒸肉粉、土豆、生抽',
+  '京酱肉丝': '里脊肉、甜面酱、豆皮、葱', '木须肉': '里脊肉、鸡蛋、木耳、黄瓜',
+  '青椒肉丝': '里脊肉、青椒、生抽、蒜', '芹菜炒肉': '芹菜、里脊肉、蒜、生抽',
+  '土豆炖牛肉': '牛腩、土豆、胡萝卜、八角', '黑椒牛柳': '牛里脊、黑胡椒、洋葱、彩椒',
+  '孜然羊肉': '羊肉、孜然、洋葱、香菜', '葱爆羊肉': '羊肉、大葱、姜、料酒',
+  '糖醋鱼': '鱼、番茄酱、醋、糖、淀粉', '鱼香茄子': '茄子、肉末、豆瓣酱、蒜',
+  '干锅花菜': '花菜、五花肉、干辣椒、蒜', '手撕包菜': '包菜、干辣椒、蒜、醋',
+  '蚝油生菜': '生菜、蚝油、蒜', '蒜蓉油麦菜': '油麦菜、蒜、蚝油',
+  '香菇青菜': '青菜、香菇、蒜、蚝油', '虎皮青椒': '青椒、蒜、生抽、醋',
+  '干煸四季豆': '四季豆、肉末、干辣椒、蒜', '醋溜白菜': '白菜、干辣椒、醋、蒜',
+  '红烧茄子': '茄子、蒜、生抽、糖', '香干炒芹菜': '香干、芹菜、蒜、生抽',
+  '韭菜炒蛋': '韭菜、鸡蛋', '苦瓜炒蛋': '苦瓜、鸡蛋、蒜',
+  '丝瓜蛋汤': '丝瓜、鸡蛋、葱', '冬瓜排骨汤': '冬瓜、排骨、姜',
+  '萝卜排骨汤': '白萝卜、排骨、姜', '莲藕排骨汤': '莲藕、排骨、姜',
+  '银耳莲子羹': '银耳、莲子、红枣、冰糖', '西湖牛肉羹': '牛肉末、豆腐、蛋清、香菜',
+  '酸辣汤': '豆腐、木耳、鸡蛋、醋、胡椒', '疙瘩汤': '面粉、西红柿、鸡蛋、青菜',
+  '皮蛋瘦肉粥': '大米、皮蛋、瘦肉、姜', '白粥': '大米',
+  '炒河粉': '河粉、豆芽、鸡蛋、葱', '炒面': '面条、包菜、鸡蛋、生抽',
+  '炒米粉': '米粉、豆芽、鸡蛋、葱', '饺子': '饺子皮、猪肉、白菜',
+  '馄饨': '馄饨皮、猪肉、紫菜、虾皮', '包子': '面粉、猪肉、酵母、葱',
+  '油条': '面粉、酵母、盐', '豆浆': '黄豆、糖',
+  '柠檬水': '柠檬、蜂蜜', '西瓜汁': '西瓜', '苹果汁': '苹果',
+  '雪碧': '雪碧', '冰红茶': '红茶包、柠檬', '乌龙茶': '乌龙茶叶', '绿茶': '绿茶茶叶',
 };
 
 function genShoppingList() {
@@ -581,6 +640,70 @@ function randomMeal() {
   goPage('page-order');
 }
 
+// ═════════════ 饮食历史推荐 ═════════════
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getRecommendations() {
+  const menu = getMenu();
+  const hist = getHistory();
+  const freq = {};
+  const last = {};
+  hist.forEach(h => {
+    Object.entries(h.orders || {}).forEach(([name, q]) => {
+      freq[name] = (freq[name] || 0) + q;
+      if (!last[name] || h.time > last[name]) last[name] = h.time;
+    });
+  });
+  const eatenSet = new Set(Object.keys(freq));
+  const favs = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
+  const stale = Object.keys(last).sort((a, b) => last[a] - last[b]).slice(0, 3);
+  const never = menu.filter(m => !eatenSet.has(m[0]));
+  // 尝鲜优先荤素均衡：荤素各取，最多3道
+  const freshNever = shuffle(never);
+  const fresh = [];
+  const freshMeat = freshNever.filter(m => isMeatCat(m[1]));
+  const freshVeg = freshNever.filter(m => !isMeatCat(m[1]));
+  while (fresh.length < 3 && (freshMeat.length || freshVeg.length)) {
+    if (freshMeat.length) fresh.push(freshMeat.shift()[0]);
+    if (fresh.length < 3 && freshVeg.length) fresh.push(freshVeg.shift()[0]);
+  }
+  return { favs, stale, fresh };
+}
+
+function renderRecs() {
+  const area = $('recArea');
+  if (!area) return;
+  const menu = getMenu();
+  const { favs, stale, fresh } = getRecommendations();
+  const nameOf = n => {
+    const m = menu.find(x => x[0] === n);
+    return m ? `${m[2]} ${n}` : `🍽️ ${n}`;
+  };
+  const mkRow = (label, emoji, items) => {
+    if (!items.length) return '';
+    const chips = items.map(n => `<span class="rec-chip" onclick="addRec('${n.replace(/'/g, "\\'")}')">${nameOf(n)} +</span>`).join('');
+    return `<div class="rec-row"><span class="rec-label">${emoji} ${label}</span><span class="rec-chips">${chips}</span></div>`;
+  };
+  const html = (favs.length || stale.length || fresh.length)
+    ? mkRow('你的最爱', '💛', favs) + mkRow('好久没吃', '⏰', stale) + mkRow('尝尝鲜', '🆕', fresh)
+    : '<div style="color:#c4a98e;font-size:12px">点几次菜后，这里会推荐你爱吃的～</div>';
+  area.innerHTML = html || '';
+}
+
+function addRec(name) {
+  if (!state.people) { toast('先选人数哦 😉'); return; }
+  state.orders[name] = (state.orders[name] || 0) + 1;
+  toast(`➕ 已加入 ${name}`, 1000);
+  renderRecs();
+}
+
 // ═════════════ 工具 ═════════════
 function $(id) { return document.getElementById(id); }
 function toast(msg) {
@@ -594,7 +717,9 @@ function getMenu() {
   const custom = JSON.parse(localStorage.getItem('familyMenu') || '[]');
   const merged = [...DEFAULT_MENU];
   for (const c of custom) {
-    if (!merged.some(m => m[0] === c[0])) merged.push(c);
+    if (!merged.some(m => m[0] === c[0])) {
+      merged.push([c[0], c[1], c[2] || '🍽️', c[3] || 0, c[4] || 0]);
+    }
   }
   return merged;
 }
@@ -656,18 +781,21 @@ async function renderDishes() {
   grid.innerHTML = '';
   const menu = getMenu();
   const catDishes = menu.filter(m => m[1] === state.activeCat);
-  for (const [name, cat, emoji] of catDishes) {
+  for (const [name, cat, emoji, spicy, kcal] of catDishes) {
     const qty = state.orders[name] || 0;
     const d = document.createElement('div');
     d.className = 'dish' + (qty > 0 ? ' selected' : '');
     const photo = await getDishPhoto(name);
     const lastTs = lastEatenAt(name);
     const eatenTag = lastTs ? `<span class="eaten-tag">🕘${timeAgo(lastTs)}</span>` : '';
+    const spicyTag = spicy ? `<span class="dish-spicy">${'🌶️'.repeat(Math.min(spicy, 3))}${SPICY_TEXT[spicy]}</span>` : '';
+    const kcalTag = kcal ? `<span class="dish-kcal">🔥 ${kcal}kcal</span>` : '';
     if (photo) {
       d.innerHTML = `
         <span class="dish-photo"><img src="${photo}" alt="${name}"></span>
         <span class="name">${name}</span>
         <span class="tag">${CATS[cat].name}</span>
+        ${spicyTag}${kcalTag}
         ${eatenTag}
         ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
     } else {
@@ -675,6 +803,7 @@ async function renderDishes() {
         <span class="emoji">${emoji}</span>
         <span class="name">${name}</span>
         <span class="tag">${CATS[cat].name}</span>
+        ${spicyTag}${kcalTag}
         ${eatenTag}
         ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
     }
@@ -722,23 +851,25 @@ function renderList() {
   }
   const groups = $('listGroups');
   groups.innerHTML = '';
-  let meat = 0, veg = 0, other = 0, total = 0;
+  let meat = 0, veg = 0, other = 0, total = 0, kcal = 0;
   for (const [cat, items] of Object.entries(byCat)) {
     const g = document.createElement('div');
     g.className = 'list-group';
     g.innerHTML = `<h3>${CATS[cat] ? CATS[cat].name : '🍽️ 其他'} <span>${items.reduce((s, i) => s + i[1], 0)} 道</span></h3>`;
     items.forEach(([name, q, emoji]) => {
+      const item = menu.find(m => m[0] === name);
       const row = document.createElement('div');
       row.className = 'list-item';
       row.innerHTML = `
         <span class="emoji">${emoji}</span>
-        <span class="name">${name}</span>
+        <span class="name">${name}${item && item[3] ? `<span style="font-size:10px;color:#e05555;margin-left:4px">${'🌶️'.repeat(Math.min(item[3],3))}</span>` : ''}</span>
         <div class="ctrl">
           <button onclick="changeQty('${name.replace(/'/g, "\\'")}', -1)">−</button>
           <span class="qty">${q}</span>
           <button onclick="changeQty('${name.replace(/'/g, "\\'")}', 1)">+</button>
         </div>`;
       g.appendChild(row);
+      if (item && item[4]) kcal += item[4] * q;
     });
     groups.appendChild(g);
     if (isMeatCat(cat)) meat += items.reduce((s, i) => s + i[1], 0);
@@ -751,7 +882,8 @@ function renderList() {
   $('sumVeg').textContent = veg + ' 道';
   $('sumOther').textContent = other + ' 道';
   $('sumTotal').textContent = total + ' 道';
-  $('barInfo2').innerHTML = `共 <b>${total}</b> 道 · 荤 <b>${meat}</b> 素 <b>${veg}</b>`;
+  $('sumKcal').textContent = kcal ? kcal + ' kcal' : '0 kcal';
+  $('barInfo2').innerHTML = `共 <b>${total}</b> 道 · 荤 <b>${meat}</b> 素 <b>${veg}</b> · 🔥<b>${kcal}</b>kcal`;
   // 搭配建议
   if (total > 0 && meat === 0) toast('再点个荤菜吧，营养均衡 🍖');
   else if (total > 0 && veg === 0) toast('加点素菜，健康美味 🥬');
@@ -771,7 +903,7 @@ function finishOrder() {
   if (!entries.length) { toast('还没点菜呢 😅'); return; }
   const list = $('resultList');
   list.innerHTML = '';
-  let meat = 0, veg = 0;
+  let meat = 0, veg = 0, kcal = 0;
   for (const [name, q] of entries) {
     const item = menu.find(m => m[0] === name);
     const cat = item ? item[1] : 'other';
@@ -779,14 +911,16 @@ function finishOrder() {
     row.className = 'result-item';
     row.innerHTML = `
       <span>${item ? item[2] : '🍽️'} ${name} ${q > 1 ? '×' + q : ''}
+        ${item && item[3] ? `<span style="font-size:10px;color:#e05555">${'🌶️'.repeat(Math.min(item[3], 3))}</span>` : ''}
         <span class="tag ${CATS[cat] ? CATS[cat].tagClass : 'tag-other'}">${CATS[cat] ? CATS[cat].tag : '?'}</span>
       </span>
       <span>${q} 份</span>`;
     list.appendChild(row);
+    if (item && item[4]) kcal += item[4] * q;
     if (isMeatCat(cat)) meat += q;
     else if (cat === 'veg') veg += q;
   }
-  $('resultMeta').innerHTML = `${state.who}点的 · ${state.people}人用餐 · 共 ${entries.length} 道 (荤${meat} 素${veg})`;
+  $('resultMeta').innerHTML = `${state.who}点的 · ${state.people}人用餐 · 共 ${entries.length} 道 (荤${meat} 素${veg}) · 🔥${kcal}kcal`;
   goPage('page-result');
 
   // 🕘 保存点菜历史
@@ -906,13 +1040,17 @@ function addDish() {
   const name = $('inpName').value.trim();
   const cat = $('inpCat').value;
   const emoji = $('inpEmoji').value.trim() || '🍽️';
+  const spicy = parseInt($('inpSpicy').value) || 0;
+  const kcal = parseInt($('inpKcal').value) || 0;
   if (!name) { toast('写个菜名呀 😄'); return; }
   const custom = getCustom();
   if (custom.some(c => c[0] === name)) { toast('这道菜已经有了 😉'); return; }
-  custom.push([name, cat, emoji]);
+  custom.push([name, cat, emoji, spicy, kcal]);
   saveCustom(custom);
   $('inpName').value = '';
   $('inpEmoji').value = '';
+  $('inpKcal').value = '';
+  $('inpSpicy').value = '0';
   renderManage();
   toast(`✅ 已添加 ${emoji} ${name}`);
 }
@@ -922,14 +1060,17 @@ function renderManage() {
   const menu = getMenu();
   const custom = getCustom();
   list.innerHTML = menu.length ? '' : '<div style="color:#c4a98e;text-align:center;padding:14px">还没有菜，先添加一道吧～</div>';
-  menu.forEach(([name, cat, emoji]) => {
+  menu.forEach(([name, cat, emoji, spicy, kcal]) => {
     const isCustom = custom.some(c => c[0] === name);
     const d = document.createElement('div');
     d.className = 'added-item';
     d.id = 'mgr-' + name;
     d.innerHTML = `
       <span class="mgr-photo" data-name="${name}">${emoji}</span>
-      <span class="name">${name}</span>
+      <span class="name">${name}
+        ${spicy ? `<span style="font-size:10px;color:#e05555">${'🌶️'.repeat(Math.min(spicy,3))}</span>` : ''}
+        ${kcal ? `<span style="font-size:10px;color:#9a7b5f">${kcal}kcal</span>` : ''}
+      </span>
       <span class="cat">${CATS[cat].name}${isCustom ? ' · 自' : ''}</span>
       <span class="del" onclick="pickPhotoFor('${name.replace(/'/g, "\\'")}')">📷</span>
       ${isCustom ? `<span class="del" onclick="delDish('${name.replace(/'/g, "\\'")}')">✕</span>` : ''}`;
@@ -979,6 +1120,14 @@ function resetAll() {
 
 // ═════════════ 启动 ═════════════
 renderPeople();
+renderRecs();
+
+// PWA: 注册 Service Worker（离线可用）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

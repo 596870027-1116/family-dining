@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🏠 家庭点菜</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(160deg, #fff8f0 0%, #ffedd8 100%);
+  min-height: 100vh; color:#5a4632;
+}
+/* ── 头部 ── */
+.header {
+  background: linear-gradient(135deg, #ff8c42, #ff6b6b);
+  color:#fff; padding:20px 20px 24px; border-radius:0 0 28px 28px;
+  box-shadow: 0 4px 20px rgba(255,107,107,.35);
+  position: relative;
+}
+.header h1 { font-size:24px; font-weight:800; display:flex; align-items:center; gap:8px; }
+.header .sub { font-size:13px; opacity:.9; margin-top:4px; }
+.header .badge {
+  position:absolute; right:16px; top:16px; background:rgba(255,255,255,.25);
+  padding:6px 12px; border-radius:20px; font-size:13px; font-weight:600;
+}
+/* ── 页面容器 ── */
+.page { display:none; padding:16px 16px 90px; animation: fadeIn .25s ease; }
+.page.active { display:block; }
+@keyframes fadeIn { from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+
+/* ── 人数选择 ── */
+.section-title { font-size:15px; font-weight:700; margin:18px 0 12px; display:flex; align-items:center; gap:6px; }
+.section-title .bar { width:4px; height:16px; border-radius:2px; background:#ff8c42; display:inline-block; }
+.people-grid { display:flex; gap:10px; flex-wrap:wrap; }
+.people-btn {
+  flex:1; min-width:64px; height:64px; border-radius:16px; background:#fff;
+  border:2px solid #f0dcc8; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; cursor:pointer; transition:all .15s; font-size:12px; color:#9a7b5f;
+}
+.people-btn .num { font-size:22px; font-weight:800; color:#5a4632; }
+.people-btn.selected {
+  border-color:#ff8c42; background:linear-gradient(135deg,#ff8c42,#ff6b6b); color:#fff;
+  box-shadow:0 4px 14px rgba(255,107,107,.4); transform:scale(1.05);
+}
+.people-btn.selected .num { color:#fff; }
+
+/* ── 分类 Tabs ── */
+.tabs { display:flex; gap:8px; overflow-x:auto; padding:4px 0 12px; scrollbar-width:none; }
+.tabs::-webkit-scrollbar { display:none; }
+.tab {
+  flex-shrink:0; padding:8px 16px; border-radius:20px; background:#fff;
+  border:1.5px solid #f0dcc8; font-size:13px; font-weight:600; color:#9a7b5f;
+  cursor:pointer; transition:all .15s;
+}
+.tab.active { background:#ff8c42; border-color:#ff8c42; color:#fff; box-shadow:0 3px 10px rgba(255,140,66,.3); }
+
+/* ── 菜品网格 ── */
+.dish-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.dish {
+  background:#fff; border-radius:16px; padding:12px 8px; text-align:center;
+  border:2px solid transparent; cursor:pointer; transition:all .15s;
+  box-shadow:0 2px 8px rgba(90,70,50,.06); position:relative;
+}
+.dish:active { transform:scale(.96); }
+.dish .emoji { font-size:32px; display:block; margin-bottom:6px; }
+.dish .name { font-size:13px; font-weight:600; color:#5a4632; line-height:1.3; }
+.dish .tag { font-size:10px; color:#c4a98e; margin-top:3px; display:block; }
+.dish.selected {
+  border-color:#ff6b6b; background:linear-gradient(160deg,#fff,#fff5f0);
+  box-shadow:0 4px 14px rgba(255,107,107,.25);
+}
+.dish.selected::after {
+  content:"✓"; position:absolute; top:6px; right:8px; width:20px; height:20px;
+  background:#ff6b6b; color:#fff; border-radius:50%; font-size:12px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+}
+.dish .count-badge {
+  position:absolute; bottom:6px; right:6px; background:#ff8c42; color:#fff;
+  font-size:11px; font-weight:700; border-radius:10px; padding:1px 6px; display:none;
+}
+.dish.selected .count-badge { display:block; }
+
+/* ── 底部操作栏 ── */
+.bottom-bar {
+  position:fixed; bottom:0; left:0; right:0; background:rgba(255,255,255,.95);
+  backdrop-filter: blur(10px); padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  display:flex; align-items:center; gap:12px; box-shadow:0 -4px 20px rgba(90,70,50,.08);
+  border-top:1px solid #f0e4d4; z-index:50;
+}
+.bar-info { flex:1; font-size:13px; color:#9a7b5f; line-height:1.4; }
+.bar-info b { color:#5a4632; font-size:15px; }
+.btn {
+  border:none; border-radius:14px; padding:12px 22px; font-size:15px; font-weight:700;
+  cursor:pointer; transition:all .15s; font-family:inherit;
+}
+.btn-primary { background:linear-gradient(135deg,#ff8c42,#ff6b6b); color:#fff; box-shadow:0 4px 14px rgba(255,107,107,.35); }
+.btn-primary:active { transform:scale(.95); }
+.btn-ghost { background:#f5e8d8; color:#9a7b5f; }
+.btn:disabled { opacity:.4; }
+
+/* ── 清单页 ── */
+.list-group { background:#fff; border-radius:18px; padding:14px; margin-bottom:12px; box-shadow:0 2px 8px rgba(90,70,50,.05); }
+.list-group h3 { font-size:14px; font-weight:700; margin-bottom:10px; display:flex; justify-content:space-between; color:#5a4632; }
+.list-item { display:flex; align-items:center; padding:8px 0; border-bottom:1px dashed #f0e4d4; }
+.list-item:last-child { border-bottom:none; }
+.list-item .emoji { font-size:22px; margin-right:10px; }
+.list-item .name { flex:1; font-size:14px; font-weight:600; }
+.list-item .ctrl { display:flex; align-items:center; gap:10px; }
+.list-item .ctrl button {
+  width:28px; height:28px; border-radius:50%; border:1.5px solid #ff8c42; background:#fff;
+  color:#ff8c42; font-size:16px; font-weight:700; cursor:pointer; line-height:1;
+}
+.list-item .ctrl button:active { background:#fff0e6; }
+.list-item .ctrl .qty { font-size:15px; font-weight:700; min-width:16px; text-align:center; }
+.summary-card {
+  background:linear-gradient(135deg,#ff8c42,#ff6b6b); border-radius:18px; padding:16px;
+  color:#fff; margin-bottom:14px; box-shadow:0 4px 14px rgba(255,107,107,.3);
+}
+.summary-card .row { display:flex; justify-content:space-between; font-size:14px; margin:6px 0; }
+.summary-card .row b { font-size:16px; }
+
+/* ── 结果页 ── */
+.result-card {
+  background:#fff; border-radius:20px; padding:24px 20px; text-align:center;
+  box-shadow:0 4px 20px rgba(90,70,50,.08); margin-top:10px;
+}
+.result-card .big-emoji { font-size:56px; }
+.result-card h2 { font-size:20px; margin:10px 0 4px; color:#5a4632; }
+.result-card .meta { color:#9a7b5f; font-size:13px; margin-bottom:16px; }
+.result-list { text-align:left; margin:14px 0; }
+.result-item { display:flex; justify-content:space-between; padding:8px 4px; border-bottom:1px dashed #f0e4d4; font-size:14px; }
+.result-item:last-child { border:none; }
+.result-item .tag { font-size:11px; padding:2px 8px; border-radius:10px; margin-left:6px; }
+.tag-meat { background:#ffe3e3; color:#e05555; }
+.tag-veg { background:#e4f7e4; color:#3aa03a; }
+.tag-other { background:#fff0e0; color:#d9822b; }
+.btn-row { display:flex; gap:10px; margin-top:18px; }
+.btn-row .btn { flex:1; }
+
+/* ── 自定义菜单页 ── */
+.form-card { background:#fff; border-radius:18px; padding:16px; margin-bottom:12px; box-shadow:0 2px 8px rgba(90,70,50,.05); }
+.form-card label { font-size:13px; font-weight:600; color:#9a7b5f; display:block; margin:10px 0 6px; }
+.form-card input, .form-card select {
+  width:100%; padding:12px; border:1.5px solid #f0dcc8; border-radius:12px;
+  font-size:14px; font-family:inherit; background:#fdf9f4; color:#5a4632; outline:none;
+}
+.form-card input:focus { border-color:#ff8c42; }
+.added-item { display:flex; align-items:center; padding:10px 0; border-bottom:1px dashed #f0e4d4; }
+.added-item:last-child { border:none; }
+.added-item .emoji { font-size:20px; margin-right:10px; }
+.added-item .name { flex:1; font-size:14px; }
+.added-item .cat { font-size:11px; color:#9a7b5f; background:#f5e8d8; padding:2px 8px; border-radius:10px; }
+.added-item .del { color:#e05555; font-size:18px; padding:0 6px; cursor:pointer; }
+
+/* ── Toast ── */
+.toast {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(.9);
+  background:rgba(40,30,20,.9); color:#fff; padding:14px 24px; border-radius:14px;
+  font-size:14px; z-index:99; opacity:0; transition:all .2s; pointer-events:none;
+  text-align:center; max-width:70%;
+}
+.toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ 页面1: 人数选择 ═══════════ -->
+<div class="header">
+  <h1>🏠 家庭点菜</h1>
+  <div class="sub">今天想好好吃一顿～</div>
+  <div class="badge" id="headerBadge">👥 选人数</div>
+</div>
+
+<div class="page active" id="page-people">
+  <div class="section-title"><span class="bar"></span>几个人用餐？</div>
+  <div class="people-grid" id="peopleGrid"></div>
+
+  <div class="section-title"><span class="bar"></span>谁在点菜？</div>
+  <div class="people-grid" id="whoGrid">
+    <div class="people-btn" data-who="我">
+      <span class="emoji" style="font-size:26px">😎</span><span>我</span>
+    </div>
+    <div class="people-btn" data-who="我们">
+      <span class="emoji" style="font-size:26px">💑</span><span>我们俩</span>
+    </div>
+    <div class="people-btn" data-who="老婆">
+      <span class="emoji" style="font-size:26px">👩</span><span>老婆点</span>
+    </div>
+  </div>
+
+  <div class="section-title"><span class="bar"></span>📝 自定义菜单</div>
+  <div style="display:flex; gap:10px">
+    <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-manage')">✏️ 管理菜单</button>
+    <button class="btn btn-ghost" style="flex:1" onclick="resetAll()">🔄 清空重来</button>
+  </div>
+
+  <div style="height:24px"></div>
+  <div class="bottom-bar">
+    <div class="bar-info">选好人数和谁点菜<br>开始愉快的点菜吧</div>
+    <button class="btn btn-primary" onclick="startOrder()">开始点菜 🍽️</button>
+  </div>
+</div>
+
+<!-- ═══════════ 页面2: 点菜 ═══════════ -->
+<div class="page" id="page-order">
+  <div class="section-title" style="margin-top:8px"><span class="bar"></span><span id="orderTitle">👥 3人用餐</span></div>
+  <div class="tabs" id="catTabs"></div>
+  <div class="dish-grid" id="dishGrid"></div>
+
+  <div class="bottom-bar">
+    <div class="bar-info" id="barInfo"><b>0</b> 道菜 · 荤 <b>0</b> / 素 <b>0</b></div>
+    <button class="btn btn-ghost" onclick="goPage('page-people')">← 返回</button>
+    <button class="btn btn-primary" id="btnViewList" onclick="goPage('page-list')" disabled>看清单 📋</button>
+  </div>
+</div>
+
+<!-- ═══════════ 页面3: 清单 ═══════════ -->
+<div class="page" id="page-list">
+  <div class="section-title" style="margin-top:8px"><span class="bar"></span>已点清单</div>
+  <div class="summary-card">
+    <div class="row"><span>👥 用餐人数</span><b id="sumPeople">3 人</b></div>
+    <div class="row"><span>🍖 荤菜</span><b id="sumMeat">0 道</b></div>
+    <div class="row"><span>🥬 素菜</span><b id="sumVeg">0 道</b></div>
+    <div class="row"><span>🍲 其他</span><b id="sumOther">0 道</b></div>
+    <div class="row"><span>📦 合计</span><b id="sumTotal">0 道</b></div>
+  </div>
+  <div id="listGroups"></div>
+  <div class="bottom-bar">
+    <div class="bar-info" id="barInfo2"></div>
+    <button class="btn btn-ghost" onclick="goPage('page-order')">← 继续点</button>
+    <button class="btn btn-primary" onclick="finishOrder()">点好了 ✅</button>
+  </div>
+</div>
+
+<!-- ═══════════ 页面4: 结果 ═══════════ -->
+<div class="page" id="page-result">
+  <div class="result-card">
+    <div class="big-emoji">🍽️</div>
+    <h2>点菜完成！</h2>
+    <div class="meta" id="resultMeta"></div>
+    <div class="result-list" id="resultList"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="copyResult()">📋 复制</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ 截图/打印</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">🏠 回到首页</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 页面5: 菜单管理 ═══════════ -->
+<div class="page" id="page-manage">
+  <div class="section-title" style="margin-top:8px"><span class="bar"></span>➕ 添加新菜</div>
+  <div class="form-card">
+    <label>菜名</label>
+    <input id="inpName" placeholder="比如：红烧排骨">
+    <label>分类</label>
+    <select id="inpCat">
+      <option value="meat">🍖 荤菜</option>
+      <option value="veg">🥬 素菜</option>
+      <option value="soup">🍲 汤</option>
+      <option value="cold">🥗 凉菜</option>
+      <option value="staple">🍚 主食</option>
+      <option value="drink">🥤 饮品</option>
+    </select>
+    <label>图标 (emoji)</label>
+    <input id="inpEmoji" placeholder="🍖" maxlength="4">
+    <div style="margin-top:12px"><button class="btn btn-primary" style="width:100%" onclick="addDish()">添加 ➕</button></div>
+  </div>
+  <div class="section-title"><span class="bar"></span>📋 已添加的菜</div>
+  <div class="form-card" id="customList"></div>
+  <div class="bottom-bar">
+    <button class="btn btn-ghost" style="flex:1" onclick="goPage('page-people')">← 返回</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═════════════ 数据 ═════════════
+const CATS = {
+  meat:   { name: '🍖 荤菜', tag: '荤', tagClass: 'tag-meat' },
+  veg:    { name: '🥬 素菜', tag: '素', tagClass: 'tag-veg' },
+  soup:   { name: '🍲 汤',   tag: '汤', tagClass: 'tag-other' },
+  cold:   { name: '🥗 凉菜', tag: '凉', tagClass: 'tag-other' },
+  staple: { name: '🍚 主食', tag: '主', tagClass: 'tag-other' },
+  drink:  { name: '🥤 饮品', tag: '饮', tagClass: 'tag-other' },
+};
+
+const DEFAULT_MENU = [
+  // 荤菜
+  ['红烧排骨', 'meat', '🍖'], ['可乐鸡翅', 'meat', '🍗'], ['糖醋里脊', 'meat', '🥩'],
+  ['宫保鸡丁', 'meat', '🍛'], ['红烧肉', 'meat', '🍖'], ['清蒸鲈鱼', 'meat', '🐟'],
+  ['回锅肉', 'meat', '🥘'], ['蒜蓉大虾', 'meat', '🦐'],
+  // 素菜
+  ['清炒时蔬', 'veg', '🥬'], ['西红柿炒蛋', 'veg', '🍅'], ['地三鲜', 'veg', '🍆'],
+  ['蒜蓉西兰花', 'veg', '🥦'], ['酸辣土豆丝', 'veg', '🥔'], ['麻婆豆腐', 'veg', '🌶️'],
+  // 汤
+  ['紫菜蛋花汤', 'soup', '🍲'], ['玉米排骨汤', 'soup', '🌽'], ['番茄牛腩汤', 'soup', '🍅'],
+  // 凉菜
+  ['拍黄瓜', 'cold', '🥒'], ['凉拌木耳', 'cold', '🍄'], ['皮蛋豆腐', 'cold', '🥚'],
+  // 主食
+  ['白米饭', 'staple', '🍚'], ['蛋炒饭', 'staple', '🍳'], ['馒头', 'staple', '🥟'],
+  // 饮品
+  ['可乐', 'drink', '🥤'], ['橙汁', 'drink', '🧃'], ['酸奶', 'drink', '🥛'],
+];
+
+let state = {
+  people: 0,
+  who: '我',
+  orders: {},   // { dishName: qty }
+  activeCat: 'meat',
+  customMenu: [],
+};
+
+// ═════════════ 工具 ═════════════
+function $(id) { return document.getElementById(id); }
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+function getMenu() {
+  const custom = JSON.parse(localStorage.getItem('familyMenu') || '[]');
+  const merged = [...DEFAULT_MENU];
+  for (const c of custom) {
+    if (!merged.some(m => m[0] === c[0])) merged.push(c);
+  }
+  return merged;
+}
+function isMeatCat(cat) { return cat === 'meat'; }
+
+// ═════════════ 页面切换 ═════════════
+function goPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  $(id).classList.add('active');
+  window.scrollTo(0, 0);
+  if (id === 'page-list') renderList();
+  if (id === 'page-manage') renderManage();
+  if (id === 'page-order') renderTabs();
+}
+
+// ═════════════ 人数选择 ═════════════
+function renderPeople() {
+  const g = $('peopleGrid');
+  g.innerHTML = '';
+  for (let i = 1; i <= 8; i++) {
+    const d = document.createElement('div');
+    d.className = 'people-btn' + (state.people === i ? ' selected' : '');
+    d.innerHTML = `<span class="num">${i}</span><span>人</span>`;
+    d.onclick = () => { state.people = i; renderPeople(); };
+    g.appendChild(d);
+  }
+  document.querySelectorAll('#whoGrid .people-btn').forEach(b => {
+    b.classList.toggle('selected', state.who === b.dataset.who);
+    b.onclick = () => { state.who = b.dataset.who; renderPeople(); };
+  });
+  const ok = state.people > 0;
+  $('headerBadge').textContent = ok ? `👥 ${state.people} 人` : '👥 选人数';
+}
+
+// ═════════════ 点菜 ═════════════
+function startOrder() {
+  if (!state.people) { toast('先选人数哦 😉'); return; }
+  $('orderTitle').textContent = `${state.who}点菜 · ${state.people}人用餐`;
+  renderTabs();
+  goPage('page-order');
+}
+
+function renderTabs() {
+  const tabs = $('catTabs');
+  tabs.innerHTML = '';
+  for (const [key, cat] of Object.entries(CATS)) {
+    const t = document.createElement('div');
+    t.className = 'tab' + (state.activeCat === key ? ' active' : '');
+    t.textContent = cat.name;
+    t.onclick = () => { state.activeCat = key; renderTabs(); };
+    tabs.appendChild(t);
+  }
+  renderDishes();
+}
+
+function renderDishes() {
+  const grid = $('dishGrid');
+  grid.innerHTML = '';
+  const menu = getMenu();
+  menu.filter(m => m[1] === state.activeCat).forEach(([name, cat, emoji]) => {
+    const d = document.createElement('div');
+    const qty = state.orders[name] || 0;
+    d.className = 'dish' + (qty > 0 ? ' selected' : '');
+    d.innerHTML = `
+      <span class="emoji">${emoji}</span>
+      <span class="name">${name}</span>
+      <span class="tag">${CATS[cat].name}</span>
+      ${qty > 0 ? `<span class="count-badge">×${qty}</span>` : ''}`;
+    d.onclick = () => toggleDish(name);
+    grid.appendChild(d);
+  });
+  updateBar();
+}
+
+function toggleDish(name) {
+  if (state.orders[name]) {
+    state.orders[name]++;
+  } else {
+    state.orders[name] = 1;
+    const menu = getMenu();
+    const item = menu.find(m => m[0] === name);
+    toast(item ? `${item[2]} ${name} +1` : `${name} +1`);
+  }
+  renderDishes();
+}
+
+function updateBar() {
+  const entries = Object.entries(state.orders);
+  const total = entries.reduce((s, [, q]) => s + q, 0);
+  const menu = getMenu();
+  let meat = 0, veg = 0;
+  for (const [name, q] of entries) {
+    const item = menu.find(m => m[0] === name);
+    if (item && isMeatCat(item[1])) meat += q;
+    else if (item) veg += q;
+  }
+  $('barInfo').innerHTML = `<b>${total}</b> 道菜 · 荤 <b>${meat}</b> / 素 <b>${veg}</b>`;
+  $('btnViewList').disabled = total === 0;
+}
+
+// ═════════════ 清单 ═════════════
+function renderList() {
+  const menu = getMenu();
+  const byCat = {};
+  for (const [name, q] of Object.entries(state.orders)) {
+    const item = menu.find(m => m[0] === name);
+    const cat = item ? item[1] : 'other';
+    if (!byCat[cat]) byCat[cat] = [];
+    byCat[cat].push([name, q, item ? item[2] : '🍽️']);
+  }
+  const groups = $('listGroups');
+  groups.innerHTML = '';
+  let meat = 0, veg = 0, other = 0, total = 0;
+  for (const [cat, items] of Object.entries(byCat)) {
+    const g = document.createElement('div');
+    g.className = 'list-group';
+    g.innerHTML = `<h3>${CATS[cat] ? CATS[cat].name : '🍽️ 其他'} <span>${items.reduce((s, i) => s + i[1], 0)} 道</span></h3>`;
+    items.forEach(([name, q, emoji]) => {
+      const row = document.createElement('div');
+      row.className = 'list-item';
+      row.innerHTML = `
+        <span class="emoji">${emoji}</span>
+        <span class="name">${name}</span>
+        <div class="ctrl">
+          <button onclick="changeQty('${name.replace(/'/g, "\\'")}', -1)">−</button>
+          <span class="qty">${q}</span>
+          <button onclick="changeQty('${name.replace(/'/g, "\\'")}', 1)">+</button>
+        </div>`;
+      g.appendChild(row);
+    });
+    groups.appendChild(g);
+    if (isMeatCat(cat)) meat += items.reduce((s, i) => s + i[1], 0);
+    else if (cat === 'veg') veg += items.reduce((s, i) => s + i[1], 0);
+    else other += items.reduce((s, i) => s + i[1], 0);
+    total += items.reduce((s, i) => s + i[1], 0);
+  }
+  $('sumPeople').textContent = state.people + ' 人';
+  $('sumMeat').textContent = meat + ' 道';
+  $('sumVeg').textContent = veg + ' 道';
+  $('sumOther').textContent = other + ' 道';
+  $('sumTotal').textContent = total + ' 道';
+  $('barInfo2').innerHTML = `共 <b>${total}</b> 道 · 荤 <b>${meat}</b> 素 <b>${veg}</b>`;
+  // 搭配建议
+  if (total > 0 && meat === 0) toast('再点个荤菜吧，营养均衡 🍖');
+  else if (total > 0 && veg === 0) toast('加点素菜，健康美味 🥬');
+}
+
+function changeQty(name, delta) {
+  state.orders[name] = (state.orders[name] || 0) + delta;
+  if (state.orders[name] <= 0) delete state.orders[name];
+  renderList();
+  renderDishes();
+}
+
+// ═════════════ 完成 ═════════════
+function finishOrder() {
+  const menu = getMenu();
+  const entries = Object.entries(state.orders);
+  if (!entries.length) { toast('还没点菜呢 😅'); return; }
+  const list = $('resultList');
+  list.innerHTML = '';
+  let meat = 0, veg = 0;
+  for (const [name, q] of entries) {
+    const item = menu.find(m => m[0] === name);
+    const cat = item ? item[1] : 'other';
+    const row = document.createElement('div');
+    row.className = 'result-item';
+    row.innerHTML = `
+      <span>${item ? item[2] : '🍽️'} ${name} ${q > 1 ? '×' + q : ''}
+        <span class="tag ${CATS[cat] ? CATS[cat].tagClass : 'tag-other'}">${CATS[cat] ? CATS[cat].tag : '?'}</span>
+      </span>
+      <span>${q} 份</span>`;
+    list.appendChild(row);
+    if (isMeatCat(cat)) meat += q;
+    else if (cat === 'veg') veg += q;
+  }
+  $('resultMeta').innerHTML = `${state.who}点的 · ${state.people}人用餐 · 共 ${entries.length} 道 (荤${meat} 素${veg})`;
+  goPage('page-result');
+}
+
+function copyResult() {
+  const menu = getMenu();
+  let text = `🍽️ 今日点菜单\n👥 ${state.people}人用餐 · ${state.who}点的\n\n`;
+  for (const [name, q] of Object.entries(state.orders)) {
+    const item = menu.find(m => m[0] === name);
+    text += `${item ? item[2] : '🍽️'} ${name}${q > 1 ? ' ×' + q : ''}\n`;
+  }
+  text += `\n共 ${Object.keys(state.orders).length} 道，开饭啦！🥢`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast('📋 已复制，去粘贴吧！'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    toast('📋 已复制，去粘贴吧！');
+  }
+}
+
+// ═════════════ 菜单管理 ═════════════
+function getCustom() { return JSON.parse(localStorage.getItem('familyMenu') || '[]'); }
+function saveCustom(list) { localStorage.setItem('familyMenu', JSON.stringify(list)); }
+
+function addDish() {
+  const name = $('inpName').value.trim();
+  const cat = $('inpCat').value;
+  const emoji = $('inpEmoji').value.trim() || '🍽️';
+  if (!name) { toast('写个菜名呀 😄'); return; }
+  const custom = getCustom();
+  if (custom.some(c => c[0] === name)) { toast('这道菜已经有了 😉'); return; }
+  custom.push([name, cat, emoji]);
+  saveCustom(custom);
+  $('inpName').value = '';
+  $('inpEmoji').value = '';
+  renderManage();
+  toast(`✅ 已添加 ${emoji} ${name}`);
+}
+
+function renderManage() {
+  const list = $('customList');
+  const custom = getCustom();
+  list.innerHTML = custom.length ? '' : '<div style="color:#c4a98e;text-align:center;padding:14px">还没有自定义菜，添加一道吧～</div>';
+  custom.forEach(([name, cat, emoji], i) => {
+    const d = document.createElement('div');
+    d.className = 'added-item';
+    d.innerHTML = `
+      <span class="emoji">${emoji}</span>
+      <span class="name">${name}</span>
+      <span class="cat">${CATS[cat].name}</span>
+      <span class="del" onclick="delDish(${i})">✕</span>`;
+    list.appendChild(d);
+  });
+}
+
+function delDish(i) {
+  const custom = getCustom();
+  custom.splice(i, 1);
+  saveCustom(custom);
+  renderManage();
+}
+
+function resetAll() {
+  if (!confirm('确定清空所有点菜记录？')) return;
+  state.orders = {};
+  state.people = 0;
+  renderPeople();
+  goPage('page-people');
+  toast('🔄 已清空');
+}
+
+// ═════════════ 启动 ═════════════
+renderPeople();
+</script>
+</body>
+</html>
